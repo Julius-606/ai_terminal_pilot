@@ -1,0 +1,19 @@
+# Web Interface
+streamlit>=1.30.0
+streamlit-autorefresh
+
+# AI Integration
+google-genai
+python-dotenv>=1.0.0
+websockets>=12.0
+websocket-client>=1.6.0
+fastapi>=0.100.0
+uvicorn>=0.23.0
+
+# Data Handling
+pandas>=2.0.0
+plotly>=5.18.0
+
+# System Monitoring
+psutil>=5.9.0
+zeroconf>=0.112.0
