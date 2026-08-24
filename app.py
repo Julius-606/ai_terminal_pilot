@@ -3,111 +3,161 @@ from core.terminal import get_node_manager
 from core.ai_pilot import AIPilot
 from core.vault import CommandVault
 from streamlit_autorefresh import st_autorefresh
+import time
 
-st.set_page_config(page_title="AI Terminal Pilot", layout="wide")
+st.set_page_config(page_title="AI Terminal Pilot", layout="wide", initial_sidebar_state="expanded")
 
-# Initialize modules
+# --- Custom Styling ---
+st.markdown("""
+    <style>
+    .stCode {
+        background-color: #0e1117;
+    }
+    .main {
+        background-color: #0e1117;
+    }
+    .stMetric {
+        background-color: #1e2130;
+        padding: 15px;
+        border-radius: 10px;
+    }
+    .chat-bubble {
+        padding: 10px;
+        border-radius: 10px;
+        margin-bottom: 10px;
+    }
+    .user-bubble {
+        background-color: #262730;
+    }
+    .ai-bubble {
+        background-color: #1e2130;
+        border-left: 5px solid #ff4b4b;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+# --- Initialization ---
 node_manager = get_node_manager()
 pilot = AIPilot()
 vault = CommandVault()
 
-st.title("🎮 Remote AI Terminal Pilot")
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = []
+if "terminal_log" not in st.session_state:
+    st.session_state.terminal_log = ""
+if "suggestion" not in st.session_state:
+    st.session_state.suggestion = None
 
-# Refresh the page every 500ms to pull new terminal output and telemetry
-st_autorefresh(interval=500, key="terminal_update")
+st_autorefresh(interval=1000, key="global_refresh")
 
-# Sidebar: Node Selection & Command Vault
+# --- Sidebar ---
 with st.sidebar:
+    st.title("🎮 Pilot Center")
+
     st.header("🖥️ System Nodes")
     nodes = node_manager.list_nodes()
-
-    # Auto-select the first node if the active one somehow disappears
-    current_index = 0
-    if node_manager.active_node_name in nodes:
-        current_index = nodes.index(node_manager.active_node_name)
-
-    selected_node = st.selectbox("Active Computer:", nodes, index=current_index)
+    selected_node = st.selectbox("Active Node:", nodes, index=nodes.index(node_manager.active_node_name))
     node_manager.active_node_name = selected_node
-
-    with st.expander("➕ Manual Connect"):
-        new_node_name = st.text_input("Node Name (e.g. Server-01)")
-        new_node_ip = st.text_input("IP Address")
-        if st.button("Connect"):
-            if new_node_name and new_node_ip:
-                node_manager.add_remote_node(new_node_name, new_node_ip)
-                st.success(f"Connecting to {new_node_name}...")
-                st.rerun()
-
-    st.write("---")
-    st.header("📢 Global Control")
-    broadcast_cmd = st.text_input("Broadcast Command:")
-    if st.button("🚀 Send to All Nodes"):
-        node_manager.broadcast(broadcast_cmd)
-        st.warning("Command sent to all active nodes.")
 
     st.write("---")
     st.header("📂 Command Vault")
-    if st.button("Save Last Command"):
-        # Logic can be expanded to save current st.session_state.suggestion
-        pass
+    saved_commands = vault.get_all()
+    if not saved_commands:
+        st.info("No commands saved yet.")
+    else:
+        for cmd_id, name, cmd, cat in saved_commands:
+            col_a, col_b = st.columns([4, 1])
+            if col_a.button(f"🚀 {name}", key=f"vault_{cmd_id}", use_container_width=True, help=cmd):
+                node_manager.get_active_node().execute(cmd)
+            if col_b.button("🗑️", key=f"del_{cmd_id}"):
+                # Add delete logic to vault.py later if needed
+                pass
+
     st.write("---")
-    saved = vault.get_all()
-    for _, name, cmd, _ in saved:
-        if st.button(f"📦 {name}"):
-            node_manager.get_active_node().execute(cmd)
+    st.header("📢 Broadcast")
+    b_cmd = st.text_input("Execute on ALL nodes:")
+    if st.button("Global Execute"):
+        node_manager.broadcast(b_cmd)
+        st.success("Broadcasted!")
 
-# Main Terminal Interface
+# --- Main Dashboard ---
 terminal = node_manager.get_active_node()
-
-# TOP SECTION: Telemetry Dashboard
 stats = terminal.get_telemetry()
-cols = st.columns(3)
-cols[0].metric("CPU Usage", f"{stats['cpu']}%")
-cols[1].metric("RAM Usage", f"{stats['ram']}%")
-cols[2].metric("Disk Usage", f"{stats['disk']}%")
 
-st.write("---")
+# Header Metrics
+m1, m2, m3, m4 = st.columns(4)
+m1.metric("Node", selected_node)
+m2.metric("CPU", f"{stats['cpu']}%")
+m3.metric("RAM", f"{stats['ram']}%")
+m4.metric("Disk", f"{stats['disk']}%")
 
-col1, col2 = st.columns([2, 1])
+st.divider()
 
-with col2:
-    st.subheader("🤖 AI Session")
-    mode = st.radio("Pilot Mode", ["Manual (Review)", "Auto (Agentic)"])
-    user_query = st.text_input("What do you want to do?")
+# Layout: Terminal (Left) | AI Agent (Right)
+col_term, col_ai = st.columns([1.2, 1])
+
+with col_term:
+    st.subheader(f"💻 Live Terminal")
     
-    if st.button("Generate"):
-        suggestion = pilot.suggest_command(user_query)
-        st.session_state.suggestion = suggestion
-        
-    if "suggestion" in st.session_state:
-        st.code(st.session_state.suggestion, language="powershell")
-        if mode == "Manual (Review)":
-            if st.button("Run Command"):
-                terminal.execute(st.session_state.suggestion)
-        else:
-            terminal.execute(st.session_state.suggestion)
-
-with col1:
-    st.subheader(f"💻 Live Terminal: {node_manager.active_node_name}")
-
-    # Simple input for manual commands
-    with st.form("cmd_form", clear_on_submit=True):
-        cmd_input = st.text_input("Command:")
-        submit = st.form_submit_button("Execute")
-        if submit and cmd_input:
-            terminal.execute(cmd_input)
-    
-    # Real-time output container
-    output_container = st.empty()
-    if "terminal_log" not in st.session_state:
-        st.session_state.terminal_log = ""
-    
+    # Terminal Output
     new_output = terminal.get_new_output()
     if new_output:
         st.session_state.terminal_log += new_output
     
-    output_container.code(st.session_state.terminal_log, language="text")
+    st.code(st.session_state.terminal_log if st.session_state.terminal_log else "Terminal initialized...", language="text")
 
-    if st.button("Clear Log"):
+    col_btn1, col_btn2 = st.columns(2)
+    if col_btn1.button("Clear Console", use_container_width=True):
         st.session_state.terminal_log = ""
         st.rerun()
+
+    # Manual Input
+    with st.form("manual_cmd", clear_on_submit=True):
+        cmd_in = st.text_input("Enter PowerShell Command:")
+        if st.form_submit_button("Run"):
+            terminal.execute(cmd_in)
+
+with col_ai:
+    st.subheader("🤖 AI Agentic Pilot")
+
+    # Chat Display
+    chat_container = st.container(height=400)
+    for message in st.session_state.chat_history:
+        role = message["role"]
+        with chat_container:
+            st.markdown(f'<div class="chat-bubble {role}-bubble"><b>{"👤 User" if role=="user" else "🤖 Pilot"}:</b><br>{message["content"]}</div>', unsafe_allow_html=True)
+
+    # Input area
+    user_input = st.chat_input("Ask the pilot to do something...")
+
+    if user_input:
+        st.session_state.chat_history.append({"role": "user", "content": user_input})
+
+        # Analyze current terminal context for the AI
+        context = st.session_state.terminal_log[-2000:] # Last 2000 chars
+
+        with st.spinner("AI Thinking..."):
+            suggestion = pilot.suggest_command(user_input, context=context)
+            st.session_state.suggestion = suggestion
+            st.session_state.chat_history.append({"role": "ai", "content": f"I suggest running: `{suggestion}`"})
+        st.rerun()
+
+    # Suggested Action Card
+    if st.session_state.suggestion:
+        st.info("### ⚡ Suggested Command")
+        st.code(st.session_state.suggestion, language="powershell")
+
+        c1, c2, c3 = st.columns(3)
+        if c1.button("✅ Execute", use_container_width=True):
+            terminal.execute(st.session_state.suggestion)
+            st.session_state.suggestion = None
+            st.rerun()
+
+        if c2.button("💾 Save to Vault", use_container_width=True):
+            # Prompt for name would be better, but for now:
+            vault.save_command(f"AI: {user_input[:15]}...", st.session_state.suggestion)
+            st.toast("Command saved to vault!")
+
+        if c3.button("❌ Dismiss", use_container_width=True):
+            st.session_state.suggestion = None
+            st.rerun()
