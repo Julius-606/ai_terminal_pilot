@@ -137,25 +137,35 @@ with col_ai:
         context = st.session_state.terminal_log[-2000:] # Last 2000 chars
 
         with st.spinner("AI Thinking..."):
-            suggestion = pilot.suggest_command(user_input, context=context)
-            st.session_state.suggestion = suggestion
-            st.session_state.chat_history.append({"role": "ai", "content": f"I suggest running: `{suggestion}`"})
+            suggestion_data = pilot.suggest_command(user_input, context=context)
+            st.session_state.suggestion = suggestion_data
+            
+            # Extract content for chat history
+            cmd = suggestion_data.get("command", "")
+            expl = suggestion_data.get("explanation", "")
+            st.session_state.chat_history.append({
+                "role": "ai", 
+                "content": f"{expl}<br><br><b>Command:</b> `{cmd}`"
+            })
         st.rerun()
 
     # Suggested Action Card
     if st.session_state.suggestion:
-        st.info("### ⚡ Suggested Command")
-        st.code(st.session_state.suggestion, language="powershell")
+        suggestion = st.session_state.suggestion
+        st.info(f"### ⚡ Suggested Command\n{suggestion.get('explanation', '')}")
+        st.code(suggestion.get("command", ""), language="powershell")
 
         c1, c2, c3 = st.columns(3)
         if c1.button("✅ Execute", use_container_width=True):
-            terminal.execute(st.session_state.suggestion)
+            terminal.execute(suggestion.get("command", ""))
             st.session_state.suggestion = None
             st.rerun()
 
         if c2.button("💾 Save to Vault", use_container_width=True):
-            # Prompt for name would be better, but for now:
-            vault.save_command(f"AI: {user_input[:15]}...", st.session_state.suggestion)
+            vault.save_command(
+                f"AI: {suggestion.get('explanation', '')[:20]}...", 
+                suggestion.get("command", "")
+            )
             st.toast("Command saved to vault!")
 
         if c3.button("❌ Dismiss", use_container_width=True):
