@@ -1,11 +1,14 @@
 from google import genai
+import logging
 import os
 from dotenv import load_dotenv
 
 load_dotenv()
+logger = logging.getLogger(__name__)
 
 class AIPilot:
-    def __init__(self, model_name="gemini-1.5-flash"):
+    def __init__(self, model_name=None):
+        model_name = model_name or os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
         self.model_name = model_name
         # Get keys from GEMINI_API_KEY
         raw_keys = os.getenv("GEMINI_API_KEY")
@@ -26,6 +29,7 @@ class AIPilot:
 
     def suggest_command(self, user_goal, context=""):
         try:
+            logger.info("Generating AI suggestion for goal: %s", user_goal)
             self._rotate_client()
 
             prompt = (
@@ -48,8 +52,9 @@ class AIPilot:
             
             import json
             data = json.loads(text)
+            if not isinstance(data, dict) or not data.get("command") or not data.get("explanation"):
+                raise ValueError("Gemini response must contain non-empty 'command' and 'explanation' keys")
             return data # Returns {'command': '...', 'explanation': '...'}
         except Exception as e:
-            return {"command": f"# Error", "explanation": f"Failed to generate suggestion: {str(e)}"}
-        except Exception as e:
-            return f"# Error: {str(e)}"
+            logger.exception("AI suggestion failed")
+            return {"command": "# Error", "explanation": f"Failed to generate suggestion: {e}"}

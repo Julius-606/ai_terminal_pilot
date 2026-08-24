@@ -23,8 +23,9 @@ class BaseTerminal:
 class LocalTerminal(BaseTerminal):
     def __init__(self):
         super().__init__()
+        shell_command = "powershell.exe" if os.name == "nt" else "bash"
         self.proc = subprocess.Popen(
-            ['powershell.exe', '-NoExit', '-Command', '-'],
+            [shell_command] if os.name != "nt" else [shell_command, '-NoExit', '-Command', '-'],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,

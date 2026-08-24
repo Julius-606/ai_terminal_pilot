@@ -4,6 +4,7 @@ from core.ai_pilot import AIPilot
 from core.vault import CommandVault
 from streamlit_autorefresh import st_autorefresh
 import time
+import os
 
 st.set_page_config(page_title="AI Terminal Pilot", layout="wide", initial_sidebar_state="expanded")
 
@@ -113,12 +114,16 @@ with col_term:
 
     # Manual Input
     with st.form("manual_cmd", clear_on_submit=True):
-        cmd_in = st.text_input("Enter PowerShell Command:")
+        shell_name = "PowerShell" if os.name == "nt" else "Shell"
+        cmd_in = st.text_input(f"Enter {shell_name} Command:")
         if st.form_submit_button("Run"):
             terminal.execute(cmd_in)
 
 with col_ai:
     st.subheader("🤖 AI Agentic Pilot")
+
+    if not pilot.api_keys:
+        st.warning("AI is not configured. Add GEMINI_API_KEY to your .env file and restart the app.")
 
     # Chat Display
     chat_container = st.container(height=400)
