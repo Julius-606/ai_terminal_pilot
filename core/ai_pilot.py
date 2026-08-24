@@ -24,15 +24,17 @@ class AIPilot:
         # Increment index for next call
         self.key_index = (self.key_index + 1) % len(self.api_keys)
 
-    def suggest_command(self, user_goal):
+    def suggest_command(self, user_goal, context=""):
         try:
             self._rotate_client()
 
             prompt = (
                 f"You are an expert system administrator and PowerShell master. "
                 f"Your task is to convert the following user goal into a single, efficient PowerShell command line. "
-                f"Do not provide explanations, do not use markdown code blocks, just return the raw command text.\n\n"
-                f"User Goal: {user_goal}"
+                f"Use the provided terminal context if helpful to understand the current state or previous errors.\n\n"
+                f"Terminal Context:\n{context}\n\n"
+                f"User Goal: {user_goal}\n\n"
+                f"Return only the raw command text, no explanations, no markdown."
             )
 
             response = self.client.models.generate_content(
