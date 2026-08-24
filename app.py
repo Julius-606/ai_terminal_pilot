@@ -138,6 +138,9 @@ with col_ai:
 
     if user_input:
         st.session_state.chat_history.append({"role": "user", "content": user_input})
+        with chat_container:
+            with st.chat_message("user"):
+                st.markdown(user_input)
 
         # Analyze current terminal context for the AI
         context = st.session_state.terminal_log[-2000:] # Last 2000 chars
@@ -149,11 +152,14 @@ with col_ai:
             # Extract content for chat history
             cmd = suggestion_data.get("command", "")
             expl = suggestion_data.get("explanation", "")
+            response_content = f"{expl}\n\n**Command:** `{cmd}`"
             st.session_state.chat_history.append({
-                "role": "ai", 
-                "content": f"{expl}\n\n**Command:** `{cmd}`"
+                "role": "assistant",
+                "content": response_content
             })
-        st.rerun()
+            with chat_container:
+                with st.chat_message("assistant"):
+                    st.markdown(response_content)
 
     # Suggested Action Card
     if st.session_state.suggestion:
