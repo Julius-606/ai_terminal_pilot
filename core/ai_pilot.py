@@ -34,16 +34,15 @@ class AIPilot:
                 f"Use the provided terminal context if helpful to understand the current state or previous errors.\n\n"
                 f"Terminal Context:\n{context}\n\n"
                 f"User Goal: {user_goal}\n\n"
-                f"Return only the raw command text, no explanations, no markdown."
+                f"Return only the raw command text, no explanations, no markdown code blocks."
             )
 
-            response = self.client.models.generate_content(
-                model=self.model_name,
-                contents=prompt
-            )
+            # Use chat session for better performance/AFC recommendations
+            chat = self.client.chats.create(model=self.model_name)
+            response = chat.send_message(prompt)
 
             # Clean up potential markdown formatting
-            command = response.text.strip().replace('```powershell', '').replace('```', '').strip()
+            command = response.text.strip().replace('```powershell', '').replace('```', '').replace('```', '').strip()
             return command
         except Exception as e:
             return f"# Error: {str(e)}"
