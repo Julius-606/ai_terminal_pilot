@@ -131,7 +131,7 @@ with col_ai:
         role = message["role"]
         with chat_container:
             with st.chat_message("user" if role == "user" else "assistant"):
-                st.markdown(message["content"], unsafe_allow_html=True)
+                st.markdown(message["content"])
 
     # Input area
     user_input = st.chat_input("Ask the pilot to do something...")
@@ -151,7 +151,7 @@ with col_ai:
             expl = suggestion_data.get("explanation", "")
             st.session_state.chat_history.append({
                 "role": "ai", 
-                "content": f"{expl}<br><br><b>Command:</b> `{cmd}`"
+                "content": f"{expl}\n\n**Command:** `{cmd}`"
             })
         st.rerun()
 

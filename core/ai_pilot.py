@@ -46,11 +46,11 @@ class AIPilot:
                 f"Format your response as a JSON object with two keys: 'command' (the raw PowerShell string) and 'explanation' (a brief one-sentence description)."
             )
 
-            response = self.client.models.generate_content(
+            chat = self.client.chats.create(
                 model=self.model_name,
-                contents=prompt,
                 config={"response_mime_type": "application/json"},
             )
+            response = chat.send_message(prompt)
 
             import json
             data = json.loads(response.text)
