@@ -12,8 +12,8 @@ class CommandVault:
         """)
         self.conn.commit()
 
-    def save_command(self, name, cmd):
-        self.conn.execute("INSERT INTO commands (name, cmd) VALUES (?, ?)", (name, cmd))
+    def save_command(self, name, cmd, category="General"):
+        self.conn.execute("INSERT INTO commands (name, cmd, category) VALUES (?, ?, ?)", (name, cmd, category))
         self.conn.commit()
 
     def get_all(self):
