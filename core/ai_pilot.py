@@ -8,10 +8,16 @@ logger = logging.getLogger(__name__)
 
 class AIPilot:
     def __init__(self, model_name=None):
-        model_name = model_name or os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
+        model_name = model_name or os.getenv("GEMINI_MODEL", "gemini-3-flash-preview")
         self.model_name = model_name
         # Get keys from GEMINI_API_KEY
         raw_keys = os.getenv("GEMINI_API_KEY")
+        if not raw_keys:
+            try:
+                import streamlit as st
+                raw_keys = st.secrets.get("GEMINI_API_KEY")
+            except Exception:
+                raw_keys = None
         self.api_keys = [k.strip() for k in raw_keys.split(",") if k.strip()] if raw_keys else []
         self.key_index = 0
         self.client = None
@@ -40,18 +46,14 @@ class AIPilot:
                 f"Format your response as a JSON object with two keys: 'command' (the raw PowerShell string) and 'explanation' (a brief one-sentence description)."
             )
 
-            chat = self.client.chats.create(model=self.model_name)
-            response = chat.send_message(prompt)
-            
-            # Extract JSON from response (handling potential markdown blocks)
-            text = response.text.strip()
-            if "```json" in text:
-                text = text.split("```json")[1].split("```")[0].strip()
-            elif "```" in text:
-                text = text.split("```")[1].split("```")[0].strip()
-            
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=prompt,
+                config={"response_mime_type": "application/json"},
+            )
+
             import json
-            data = json.loads(text)
+            data = json.loads(response.text)
             if not isinstance(data, dict) or not data.get("command") or not data.get("explanation"):
                 raise ValueError("Gemini response must contain non-empty 'command' and 'explanation' keys")
             return data # Returns {'command': '...', 'explanation': '...'}

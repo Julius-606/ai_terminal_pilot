@@ -130,7 +130,8 @@ with col_ai:
     for message in st.session_state.chat_history:
         role = message["role"]
         with chat_container:
-            st.markdown(f'<div class="chat-bubble {role}-bubble"><b>{"👤 User" if role=="user" else "🤖 Pilot"}:</b><br>{message["content"]}</div>', unsafe_allow_html=True)
+            with st.chat_message("user" if role == "user" else "assistant"):
+                st.markdown(message["content"], unsafe_allow_html=True)
 
     # Input area
     user_input = st.chat_input("Ask the pilot to do something...")
