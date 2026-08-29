@@ -1,6 +1,5 @@
 # Web Interface
-streamlit>=1.30.0
-streamlit-autorefresh
+gradio>=4.36.0
 
 # AI Integration
 google-genai

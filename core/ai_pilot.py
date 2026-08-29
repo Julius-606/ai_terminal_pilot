@@ -6,18 +6,12 @@ from dotenv import load_dotenv
 load_dotenv()
 logger = logging.getLogger(__name__)
 
+
 class AIPilot:
     def __init__(self, model_name=None):
         model_name = model_name or os.getenv("GEMINI_MODEL", "gemini-3-flash-preview")
         self.model_name = model_name
-        # Get keys from GEMINI_API_KEY
         raw_keys = os.getenv("GEMINI_API_KEY")
-        if not raw_keys:
-            try:
-                import streamlit as st
-                raw_keys = st.secrets.get("GEMINI_API_KEY")
-            except Exception:
-                raw_keys = None
         self.api_keys = [k.strip() for k in raw_keys.split(",") if k.strip()] if raw_keys else []
         self.key_index = 0
         self.client = None

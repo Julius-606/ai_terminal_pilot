@@ -1,185 +1,222 @@
-import streamlit as st
-from core.terminal import get_node_manager
-from core.ai_pilot import AIPilot
-from core.vault import CommandVault
-from streamlit_autorefresh import st_autorefresh
-import time
 import os
+import gradio as gr
+from core.ai_pilot import AIPilot
+from core.terminal import get_node_manager
+from core.vault import CommandVault
 
-st.set_page_config(page_title="AI Terminal Pilot", layout="wide", initial_sidebar_state="expanded")
-
-# --- Custom Styling ---
-st.markdown("""
-    <style>
-    .stCode {
-        background-color: #0e1117;
-    }
-    .main {
-        background-color: #0e1117;
-    }
-    .stMetric {
-        background-color: #1e2130;
-        padding: 15px;
-        border-radius: 10px;
-    }
-    .chat-bubble {
-        padding: 10px;
-        border-radius: 10px;
-        margin-bottom: 10px;
-    }
-    .user-bubble {
-        background-color: #262730;
-    }
-    .ai-bubble {
-        background-color: #1e2130;
-        border-left: 5px solid #ff4b4b;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-
-# --- Initialization ---
 node_manager = get_node_manager()
 pilot = AIPilot()
 vault = CommandVault()
 
-if "chat_history" not in st.session_state:
-    st.session_state.chat_history = []
-if "terminal_log" not in st.session_state:
-    st.session_state.terminal_log = ""
-if "suggestion" not in st.session_state:
-    st.session_state.suggestion = None
 
-st_autorefresh(interval=1000, key="global_refresh")
+def refresh_metrics():
+    terminal = node_manager.get_active_node()
+    stats = terminal.get_telemetry()
+    return (
+        node_manager.active_node_name,
+        f"{stats['cpu']}%",
+        f"{stats['ram']}%",
+        f"{stats['disk']}%",
+    )
 
-# --- Sidebar ---
-with st.sidebar:
-    st.title("🎮 Pilot Center")
 
-    st.header("🖥️ System Nodes")
-    nodes = node_manager.list_nodes()
-    selected_node = st.selectbox("Active Node:", nodes, index=nodes.index(node_manager.active_node_name))
-    node_manager.active_node_name = selected_node
-
-    st.write("---")
-    st.header("📂 Command Vault")
-    saved_commands = vault.get_all()
-    if not saved_commands:
-        st.info("No commands saved yet.")
-    else:
-        for cmd_id, name, cmd, cat in saved_commands:
-            col_a, col_b = st.columns([4, 1])
-            if col_a.button(f"🚀 {name}", key=f"vault_{cmd_id}", use_container_width=True, help=cmd):
-                node_manager.get_active_node().execute(cmd)
-            if col_b.button("🗑️", key=f"del_{cmd_id}"):
-                # Add delete logic to vault.py later if needed
-                pass
-
-    st.write("---")
-    st.header("📢 Broadcast")
-    b_cmd = st.text_input("Execute on ALL nodes:")
-    if st.button("Global Execute"):
-        node_manager.broadcast(b_cmd)
-        st.success("Broadcasted!")
-
-# --- Main Dashboard ---
-terminal = node_manager.get_active_node()
-stats = terminal.get_telemetry()
-
-# Header Metrics
-m1, m2, m3, m4 = st.columns(4)
-m1.metric("Node", selected_node)
-m2.metric("CPU", f"{stats['cpu']}%")
-m3.metric("RAM", f"{stats['ram']}%")
-m4.metric("Disk", f"{stats['disk']}%")
-
-st.divider()
-
-# Layout: Terminal (Left) | AI Agent (Right)
-col_term, col_ai = st.columns([1.2, 1])
-
-with col_term:
-    st.subheader(f"💻 Live Terminal")
-    
-    # Terminal Output
+def get_terminal_output_text(log_text):
+    terminal = node_manager.get_active_node()
     new_output = terminal.get_new_output()
     if new_output:
-        st.session_state.terminal_log += new_output
-    
-    st.code(st.session_state.terminal_log if st.session_state.terminal_log else "Terminal initialized...", language="text")
+        log_text = (log_text or "") + new_output
+    return log_text if log_text else "Terminal initialized..."
 
-    col_btn1, col_btn2 = st.columns(2)
-    if col_btn1.button("Clear Console", use_container_width=True):
-        st.session_state.terminal_log = ""
-        st.rerun()
 
-    # Manual Input
-    with st.form("manual_cmd", clear_on_submit=True):
-        shell_name = "PowerShell" if os.name == "nt" else "Shell"
-        cmd_in = st.text_input(f"Enter {shell_name} Command:")
-        if st.form_submit_button("Run"):
-            terminal.execute(cmd_in)
+def handle_ai_request(message, history, log_text):
+    if not message or not message.strip():
+        return history, log_text, None, ""
 
-with col_ai:
-    st.subheader("🤖 AI Agentic Pilot")
+    updated_history = history or []
+    updated_history.append({"role": "user", "content": message})
+    context = (log_text or "")[-2000:]
+    suggestion = pilot.suggest_command(message, context=context)
+    command = suggestion.get("command", "")
+    explanation = suggestion.get("explanation", "")
+    response = f"{explanation}\n\n**Command:** `{command}`"
+    updated_history.append({"role": "assistant", "content": response})
+    return updated_history, log_text, suggestion, response
 
-    if not pilot.api_keys:
-        st.warning("AI is not configured. Add GEMINI_API_KEY to your .env file and restart the app.")
 
-    # Chat Display
-    chat_container = st.container(height=400)
-    for message in st.session_state.chat_history:
-        role = message["role"]
-        with chat_container:
-            with st.chat_message("user" if role == "user" else "assistant"):
-                st.markdown(message["content"])
+def run_manual_command(command, log_text):
+    if command and command.strip():
+        node_manager.get_active_node().execute(command)
+    return log_text
 
-    # Input area
-    user_input = st.chat_input("Ask the pilot to do something...")
 
-    if user_input:
-        st.session_state.chat_history.append({"role": "user", "content": user_input})
-        with chat_container:
-            with st.chat_message("user"):
-                st.markdown(user_input)
+def clear_console():
+    return "", "Terminal initialized..."
 
-        # Analyze current terminal context for the AI
-        context = st.session_state.terminal_log[-2000:] # Last 2000 chars
 
-        with st.spinner("AI Thinking..."):
-            suggestion_data = pilot.suggest_command(user_input, context=context)
-            st.session_state.suggestion = suggestion_data
-            
-            # Extract content for chat history
-            cmd = suggestion_data.get("command", "")
-            expl = suggestion_data.get("explanation", "")
-            response_content = f"{expl}\n\n**Command:** `{cmd}`"
-            st.session_state.chat_history.append({
-                "role": "assistant",
-                "content": response_content
-            })
-            with chat_container:
-                with st.chat_message("assistant"):
-                    st.markdown(response_content)
+def broadcast_command(command):
+    if command and command.strip():
+        node_manager.broadcast(command)
+        return "Broadcasted!"
+    return "No command entered."
 
-    # Suggested Action Card
-    if st.session_state.suggestion:
-        suggestion = st.session_state.suggestion
-        st.info(f"### ⚡ Suggested Command\n{suggestion.get('explanation', '')}")
-        st.code(suggestion.get("command", ""), language="powershell")
 
-        c1, c2, c3 = st.columns(3)
-        if c1.button("✅ Execute", use_container_width=True):
-            terminal.execute(suggestion.get("command", ""))
-            st.session_state.suggestion = None
-            st.rerun()
+def save_suggestion_to_vault(suggestion):
+    if not suggestion:
+        return "No suggestion available."
+    vault.save_command(
+        f"AI: {suggestion.get('explanation', '')[:20]}...",
+        suggestion.get("command", "")
+    )
+    return "Command saved to vault."
 
-        if c2.button("💾 Save to Vault", use_container_width=True):
-            vault.save_command(
-                f"AI: {suggestion.get('explanation', '')[:20]}...", 
-                suggestion.get("command", "")
+
+def execute_suggestion_command(suggestion, log_text):
+    if suggestion:
+        command = suggestion.get("command", "")
+        if command:
+            node_manager.get_active_node().execute(command)
+    return log_text, "", None
+
+
+theme = getattr(gr.themes, "Dark", None)
+if theme is None:
+    theme = getattr(gr.themes, "Soft", None)
+if theme is None:
+    theme = getattr(gr.themes, "Default", None)
+if theme is not None:
+    theme = theme()
+
+with gr.Blocks() as demo:
+    gr.Markdown("# 🎮 AI Terminal Pilot")
+
+    state_chat = gr.State([])
+    state_terminal = gr.State("")
+    state_suggestion = gr.State(None)
+
+    with gr.Row():
+        with gr.Column(scale=1):
+            gr.Markdown("## 🧭 Pilot Center")
+            node_dropdown = gr.Dropdown(
+                choices=node_manager.list_nodes(),
+                value=node_manager.active_node_name,
+                label="Active Node",
             )
-            st.toast("Command saved to vault!")
+            global_command = gr.Textbox(label="Execute on all nodes", placeholder="Command to broadcast")
+            global_execute = gr.Button("Global Execute")
+            global_status = gr.Markdown("")
 
-        if c3.button("❌ Dismiss", use_container_width=True):
-            st.session_state.suggestion = None
-            st.rerun()
+            gr.Markdown("## 📂 Command Vault")
+            saved_commands = vault.get_all()
+            if saved_commands:
+                for cmd_id, name, cmd, _ in saved_commands:
+                    cmd_button = gr.Button(f"🚀 {name}", variant="secondary")
+                    cmd_button.click(
+                        run_manual_command,
+                        inputs=[gr.State(cmd), state_terminal],
+                        outputs=[state_terminal],
+                    )
+            else:
+                gr.Markdown("No commands saved yet.")
+
+        with gr.Column(scale=3):
+            with gr.Row():
+                node_display = gr.Textbox(label="Node", value=node_manager.active_node_name, interactive=False)
+                cpu_display = gr.Textbox(label="CPU", value="0%", interactive=False)
+                ram_display = gr.Textbox(label="RAM", value="0%", interactive=False)
+                disk_display = gr.Textbox(label="Disk", value="0%", interactive=False)
+
+            gr.Markdown("## 💻 Live Terminal")
+            terminal_output = gr.Textbox(
+                label="Terminal Output",
+                value="Terminal initialized...",
+                lines=18,
+                max_lines=18,
+            )
+
+            with gr.Row():
+                manual_command = gr.Textbox(label="Command", placeholder="Enter a PowerShell command")
+                run_command = gr.Button("Run")
+                clear_button = gr.Button("Clear Console")
+
+            gr.Markdown("## 🤖 AI Agentic Pilot")
+            chatbot = gr.Chatbot(value=[], height=420)
+            prompt = gr.Textbox(label="Ask the pilot to do something...", placeholder="Ask the pilot to do something...")
+            send_prompt = gr.Button("Send")
+            suggestion_box = gr.Markdown("")
+            suggestion_code = gr.Code(value="", language="shell", label="Suggested command")
+            with gr.Row():
+                execute_offer = gr.Button("✅ Execute")
+                save_offer = gr.Button("💾 Save to Vault")
+                dismiss_offer = gr.Button("❌ Dismiss")
+
+    def node_changed(node_name, log_text):
+        node_manager.active_node_name = node_name
+        name, cpu, ram, disk = refresh_metrics()
+        updated_log = get_terminal_output_text(log_text)
+        return name, cpu, ram, disk, updated_log, updated_log
+
+    def timer_tick(log_text):
+        terminal = node_manager.get_active_node()
+        new_output = terminal.get_new_output()
+        updated_log = log_text or ""
+        if new_output:
+            updated_log += new_output
+        name, cpu, ram, disk = refresh_metrics()
+        return name, cpu, ram, disk, updated_log, (updated_log if updated_log else "Terminal initialized...")
+
+    def update_suggestion_display(suggestion):
+        if not suggestion:
+            return "", ""
+        command = suggestion.get("command", "")
+        explanation = suggestion.get("explanation", "")
+        return f"### ⚡ Suggested Command\n{explanation}", command
+
+    node_dropdown.change(
+        node_changed,
+        inputs=[node_dropdown, state_terminal],
+        outputs=[node_display, cpu_display, ram_display, disk_display, state_terminal, terminal_output],
+    )
+    timer = gr.Timer(1)
+    timer.tick(
+        timer_tick,
+        inputs=[state_terminal],
+        outputs=[node_display, cpu_display, ram_display, disk_display, state_terminal, terminal_output],
+    )
+
+    run_command.click(run_manual_command, inputs=[manual_command, state_terminal], outputs=[state_terminal])
+    clear_button.click(clear_console, inputs=None, outputs=[state_terminal, terminal_output])
+    global_execute.click(broadcast_command, inputs=global_command, outputs=[global_status])
+
+    send_prompt.click(handle_ai_request, inputs=[prompt, state_chat, state_terminal], outputs=[state_chat, state_terminal, state_suggestion, suggestion_box])
+    prompt.submit(handle_ai_request, inputs=[prompt, state_chat, state_terminal], outputs=[state_chat, state_terminal, state_suggestion, suggestion_box])
+
+    state_chat.change(lambda history: history, inputs=state_chat, outputs=[chatbot])
+    state_suggestion.change(update_suggestion_display, inputs=state_suggestion, outputs=[suggestion_box, suggestion_code])
+
+    save_offer.click(save_suggestion_to_vault, inputs=state_suggestion, outputs=[global_status])
+    execute_offer.click(
+        execute_suggestion_command,
+        inputs=[state_suggestion, state_terminal],
+        outputs=[state_terminal, suggestion_code, state_suggestion],
+    )
+    dismiss_offer.click(lambda: (None, ""), outputs=[state_suggestion, suggestion_code])
+
+
+def main():
+    port = int(os.getenv("PORT", "7860"))
+    demo.launch(
+        server_name="0.0.0.0",
+        server_port=port,
+        share=False,
+        debug=False,
+        theme=theme,
+        css="""
+            .gradio-container { max-width: 1500px; }
+            .terminal-output textarea { font-family: monospace; }
+        """,
+    )
+
+
+if __name__ == "__main__":
+    main()
+

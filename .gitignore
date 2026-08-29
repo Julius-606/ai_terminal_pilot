@@ -1,4 +1,9 @@
-core/
+*.pyc
+.agents
 .env
 .idea/
 .venv/
+__pycache__
+core/__pycache__/ai_pilot.cpython-311.pyc
+core/__pycache__/terminal.cpython-311.pyc
+core/__pycache__/vault.cpython-311.pyc

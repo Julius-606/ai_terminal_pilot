@@ -1,13 +1,13 @@
 import subprocess
 import threading
 import queue
-import streamlit as st
 import os
 import json
 import websocket
 import time
 import psutil
 import socket
+from functools import lru_cache
 from zeroconf import ServiceBrowser, Zeroconf
 
 class BaseTerminal:
@@ -159,6 +159,6 @@ class NodeManager:
     def list_nodes(self):
         return list(self.nodes.keys())
 
-@st.cache_resource
+@lru_cache(maxsize=1)
 def get_node_manager():
     return NodeManager()
