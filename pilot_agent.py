@@ -57,12 +57,19 @@ async def telemetry_pusher(websocket):
     """Pushes system stats periodically."""
     while True:
         try:
+            cwd = os.getcwd()
+            try:
+                p = psutil.Process(session.proc.pid)
+                cwd = p.cwd()
+            except:
+                pass
             stats = {
                 "type": "telemetry",
                 "payload": {
                     "cpu": psutil.cpu_percent(),
                     "ram": psutil.virtual_memory().percent,
-                    "disk": psutil.disk_usage('/').percent
+                    "disk": psutil.disk_usage('/').percent,
+                    "cwd": cwd
                 }
             }
             await websocket.send(json.dumps(stats))

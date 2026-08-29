@@ -17,6 +17,7 @@ def refresh_metrics():
         f"{stats['cpu']}%",
         f"{stats['ram']}%",
         f"{stats['disk']}%",
+        stats.get("cwd", "...")
     )
 
 
@@ -46,7 +47,7 @@ def handle_ai_request(message, history, log_text):
 def run_manual_command(command, log_text):
     if command and command.strip():
         node_manager.get_active_node().execute(command)
-    return log_text
+    return log_text, ""
 
 
 def clear_console():
@@ -86,7 +87,7 @@ if theme is None:
 if theme is not None:
     theme = theme()
 
-with gr.Blocks() as demo:
+with gr.Blocks(title="AI Terminal Pilot") as demo:
     gr.Markdown("# 🎮 AI Terminal Pilot")
 
     state_chat = gr.State([])
@@ -118,42 +119,68 @@ with gr.Blocks() as demo:
             else:
                 gr.Markdown("No commands saved yet.")
 
-        with gr.Column(scale=3):
+        with gr.Column(scale=4):
             with gr.Row():
                 node_display = gr.Textbox(label="Node", value=node_manager.active_node_name, interactive=False)
                 cpu_display = gr.Textbox(label="CPU", value="0%", interactive=False)
                 ram_display = gr.Textbox(label="RAM", value="0%", interactive=False)
                 disk_display = gr.Textbox(label="Disk", value="0%", interactive=False)
 
-            gr.Markdown("## 💻 Live Terminal")
-            terminal_output = gr.Textbox(
-                label="Terminal Output",
-                value="Terminal initialized...",
-                lines=18,
-                max_lines=18,
-            )
+            cwd_display = gr.Textbox(label="Current Directory", value="...", interactive=False)
 
-            with gr.Row():
-                manual_command = gr.Textbox(label="Command", placeholder="Enter a PowerShell command")
-                run_command = gr.Button("Run")
-                clear_button = gr.Button("Clear Console")
+            with gr.Tabs() as mode_tabs:
+                with gr.Tab("🛠️ Manual Mode", id="manual"):
+                    gr.Markdown("### 💻 Direct Console Access")
+                    terminal_output_manual = gr.Textbox(
+                        label="Terminal Output",
+                        value="Terminal initialized...",
+                        lines=20,
+                        max_lines=25,
+                        elem_classes="terminal-output"
+                    )
+                    with gr.Row():
+                        manual_command = gr.Textbox(
+                            label="Command",
+                            placeholder="Enter PowerShell command here...",
+                            scale=4
+                        )
+                        run_command = gr.Button("Run", variant="primary", scale=1)
+                        clear_button = gr.Button("Clear", scale=1)
 
-            gr.Markdown("## 🤖 AI Agentic Pilot")
-            chatbot = gr.Chatbot(value=[], height=420)
-            prompt = gr.Textbox(label="Ask the pilot to do something...", placeholder="Ask the pilot to do something...")
-            send_prompt = gr.Button("Send")
-            suggestion_box = gr.Markdown("")
-            suggestion_code = gr.Code(value="", language="shell", label="Suggested command")
-            with gr.Row():
-                execute_offer = gr.Button("✅ Execute")
-                save_offer = gr.Button("💾 Save to Vault")
-                dismiss_offer = gr.Button("❌ Dismiss")
+                with gr.Tab("🤖 Auto Mode (AI Pilot)", id="auto"):
+                    with gr.Row():
+                        with gr.Column(scale=2):
+                            chatbot = gr.Chatbot(value=[], height=500, label="Pilot Chat")
+                            prompt = gr.Textbox(
+                                label="Ask the pilot to do something...",
+                                placeholder="e.g., 'List all large files in this directory'"
+                            )
+                            send_prompt = gr.Button("Ask Pilot", variant="primary")
+
+                        with gr.Column(scale=1):
+                            gr.Markdown("### ⚡ AI Suggestions")
+                            suggestion_box = gr.Markdown("No current suggestions.")
+                            suggestion_code = gr.Code(value="", language="shell", label="Suggested command")
+                            with gr.Row():
+                                execute_offer = gr.Button("✅ Execute", variant="primary")
+                                save_offer = gr.Button("💾 Save")
+                            dismiss_offer = gr.Button("❌ Dismiss", variant="stop")
+
+                            gr.Markdown("---")
+                            gr.Markdown("### 🔍 Terminal Preview")
+                            terminal_output_auto = gr.Textbox(
+                                label="Last Output",
+                                value="Terminal initialized...",
+                                lines=8,
+                                max_lines=10,
+                                interactive=False
+                            )
 
     def node_changed(node_name, log_text):
         node_manager.active_node_name = node_name
-        name, cpu, ram, disk = refresh_metrics()
+        name, cpu, ram, disk, cwd = refresh_metrics()
         updated_log = get_terminal_output_text(log_text)
-        return name, cpu, ram, disk, updated_log, updated_log
+        return name, cpu, ram, disk, cwd, updated_log, updated_log, updated_log
 
     def timer_tick(log_text):
         terminal = node_manager.get_active_node()
@@ -161,30 +188,33 @@ with gr.Blocks() as demo:
         updated_log = log_text or ""
         if new_output:
             updated_log += new_output
-        name, cpu, ram, disk = refresh_metrics()
-        return name, cpu, ram, disk, updated_log, (updated_log if updated_log else "Terminal initialized...")
+        name, cpu, ram, disk, cwd = refresh_metrics()
+        log_val = updated_log if updated_log else "Terminal initialized..."
+        return name, cpu, ram, disk, cwd, updated_log, log_val, log_val
 
     def update_suggestion_display(suggestion):
         if not suggestion:
-            return "", ""
+            return "No current suggestions.", ""
         command = suggestion.get("command", "")
         explanation = suggestion.get("explanation", "")
-        return f"### ⚡ Suggested Command\n{explanation}", command
+        return f"**Action:** {explanation}", command
 
     node_dropdown.change(
         node_changed,
         inputs=[node_dropdown, state_terminal],
-        outputs=[node_display, cpu_display, ram_display, disk_display, state_terminal, terminal_output],
+        outputs=[node_display, cpu_display, ram_display, disk_display, cwd_display, state_terminal, terminal_output_manual, terminal_output_auto],
     )
     timer = gr.Timer(1)
     timer.tick(
         timer_tick,
         inputs=[state_terminal],
-        outputs=[node_display, cpu_display, ram_display, disk_display, state_terminal, terminal_output],
+        outputs=[node_display, cpu_display, ram_display, disk_display, cwd_display, state_terminal, terminal_output_manual, terminal_output_auto],
     )
 
-    run_command.click(run_manual_command, inputs=[manual_command, state_terminal], outputs=[state_terminal])
-    clear_button.click(clear_console, inputs=None, outputs=[state_terminal, terminal_output])
+    run_command.click(run_manual_command, inputs=[manual_command, state_terminal], outputs=[state_terminal, manual_command])
+    manual_command.submit(run_manual_command, inputs=[manual_command, state_terminal], outputs=[state_terminal, manual_command])
+
+    clear_button.click(clear_console, inputs=None, outputs=[state_terminal, terminal_output_manual])
     global_execute.click(broadcast_command, inputs=global_command, outputs=[global_status])
 
     send_prompt.click(handle_ai_request, inputs=[prompt, state_chat, state_terminal], outputs=[state_chat, state_terminal, state_suggestion, suggestion_box])
@@ -205,7 +235,7 @@ with gr.Blocks() as demo:
 def main():
     port = int(os.getenv("PORT", "7860"))
     demo.launch(
-        server_name="0.0.0.0",
+        server_name="127.0.0.1",
         server_port=port,
         share=False,
         debug=False,

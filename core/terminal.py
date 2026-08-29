@@ -12,7 +12,7 @@ from zeroconf import ServiceBrowser, Zeroconf
 
 class BaseTerminal:
     def __init__(self):
-        self.telemetry = {"cpu": 0, "ram": 0, "disk": 0}
+        self.telemetry = {"cpu": 0, "ram": 0, "disk": 0, "cwd": "Initializing..."}
     def execute(self, command):
         raise NotImplementedError
     def get_new_output(self):
@@ -46,10 +46,17 @@ class LocalTerminal(BaseTerminal):
 
     def _update_telemetry(self):
         while True:
+            cwd = os.getcwd()
+            try:
+                p = psutil.Process(self.proc.pid)
+                cwd = p.cwd()
+            except:
+                pass
             self.telemetry = {
                 "cpu": psutil.cpu_percent(),
                 "ram": psutil.virtual_memory().percent,
-                "disk": psutil.disk_usage('/').percent
+                "disk": psutil.disk_usage('/').percent,
+                "cwd": cwd
             }
             time.sleep(2)
 
